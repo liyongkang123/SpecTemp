@@ -1,0 +1,120 @@
+Research Non-Commercial License (RNCL) v1.0
+==========================================
+
+Copyright (c) [2026] [COPYRIGHT HOLDER / INSTITUTION]
+All rights reserved.
+
+This Research Non-Commercial License ("License") governs use of the Software.
+By using, copying, modifying, or distributing the Software, You agree to be
+bound by this License.
+
+1. Definitions
+--------------
+"Software" means the source code, documentation, build files, and any other
+materials provided in this repository, including any updates or patches.
+
+"You" (or "Your") means an individual or legal entity exercising permissions
+granted by this License.
+
+"Non-Commercial Use" means use solely for research, evaluation, experimentation,
+education, or other non-commercial purposes. For clarity, Non-Commercial Use
+includes internal research and internal evaluation performed within a for-profit
+company, provided such use does not constitute Commercial Use as defined below.
+
+"Commercial Use" means any use of the Software (or Derivative Works) that is
+directly or indirectly intended for, or results in, commercial advantage,
+monetary compensation, revenue generation, or providing a product or service
+to a third party. Commercial Use includes, without limitation:
+  (a) offering the Software as part of a paid product or service;
+  (b) using the Software in production to support a commercial product/service;
+  (c) providing access to the Software to third parties (customers/users) as a
+      hosted service, API, web service, or other "software-as-a-service" (SaaS);
+  (d) distributing the Software to third parties as part of a commercial offering;
+  (e) selling, licensing, or otherwise monetizing the Software or Derivative Works.
+
+"SaaS / Online Service" means making the Software available for execution or use
+by third parties over a network, including via hosted demos, APIs, endpoints,
+plugins connected to a paid service, or any similar arrangement.
+
+"Derivative Works" means any modified version of the Software, or any work based
+upon the Software, as defined by applicable copyright law.
+
+2. Grant of Rights (Non-Commercial Only)
+----------------------------------------
+Subject to the terms and conditions of this License, the Licensor grants You a
+worldwide, non-exclusive, royalty-free, revocable license to:
+  (a) use the Software for Non-Commercial Use;
+  (b) reproduce the Software for Non-Commercial Use;
+  (c) modify the Software and create Derivative Works for Non-Commercial Use;
+  (d) distribute the Software or Derivative Works for Non-Commercial Use,
+      provided You comply with Section 3 (Conditions).
+
+No rights are granted for any Commercial Use. Any Commercial Use requires a
+separate, written commercial license from the Licensor.
+
+3. Conditions
+-------------
+If You distribute the Software or Derivative Works (including to collaborators),
+You must:
+  (a) include a copy of this License with the distribution;
+  (b) retain all copyright, attribution, and license notices;
+  (c) clearly mark any material modifications You made (e.g., in file headers or
+      a CHANGELOG);
+  (d) not misrepresent the origin of the Software.
+
+Citation request (non-binding but appreciated):
+If You use the Software in academic work, please cite the associated paper:
+  [INSERT CITATION / BIBTEX HERE]
+
+4. Restrictions
+---------------
+You must NOT:
+  (a) use the Software for Commercial Use;
+  (b) provide the Software as a SaaS / Online Service or make it available for
+      use by third parties over a network, even if access is free;
+  (c) sublicense the Software under different terms for Commercial Use;
+  (d) use the Licensor’s name, trademarks, or logos to endorse or promote products
+      derived from this Software without prior written permission.
+
+5. Patent License (Limited)
+---------------------------
+To the extent the Licensor holds patent claims that are necessarily infringed by
+use of the Software, the Licensor grants You a limited, royalty-free, non-exclusive
+patent license to make, have made, use, and modify the Software solely for
+Non-Commercial Use. No patent rights are granted for Commercial Use.
+
+6. Contributions (Optional)
+---------------------------
+If the Licensor accepts contributions, then unless otherwise agreed in writing,
+any contribution intentionally submitted for inclusion in the Software is provided
+under the same terms and conditions of this License.
+
+7. Termination
+--------------
+This License is effective until terminated. Your rights under this License will
+terminate automatically if You breach any term. Upon termination, You must stop
+all use and distribution of the Software and delete all copies in Your possession
+or control, except as required to comply with applicable law.
+
+8. Disclaimer of Warranty
+-------------------------
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NON-INFRINGEMENT.
+
+9. Limitation of Liability
+--------------------------
+IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+10. Commercial Licensing
+------------------------
+For commercial licensing inquiries, contact:
+  [NAME / EMAIL / TTO CONTACT]
+
+11. Language
+------------
+This License text is the binding legal text. Any translations or summaries are
+for convenience only and have no legal effect.

@@ -294,3 +294,13 @@ def build_prefix_suffix_tokens(tokenizer, doc_prefix: str) -> Tuple[Optional[Lis
 
  
     return prefix_tokens, suffix_tokens
+
+
+def remove_identical_ids(results):
+    popped = []
+    for qid, rels in results.items():
+        for pid in list(rels):
+            if qid == pid:
+                results[qid].pop(pid)
+                popped.append(pid)
+    return results

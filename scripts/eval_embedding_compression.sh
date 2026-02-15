@@ -12,29 +12,26 @@
 # Set-up the environment.
 
 # Activate conda
-# eval "$(/gpfs/home1/yli4/anaconda3/bin/conda shell.bash hook)"
 eval "$($HOME/anaconda3/bin/conda shell.bash hook)"
 conda activate ir
 
 nvidia-smi
 
-cd /gpfs/work4/0/prjs0928/Embedding_Isotropy
+cd /SpecTemp
 
 model_list=(
     "qwen3" 
     "gte"     
-    # "embeddinggemma"
+    "embeddinggemma"
     "jina_v4"  
-    # "nomic_v2"
-    # "bge_m3"
+    "nomic_v2"
+    "bge_m3"
 )
 
 dataset_list=(
-    # "msmarco"
-    # "hotpotqa"
-    # "nq"
-    # "fiqa"
-    # 'quora'
+    "msmarco"
+    "nq"
+    "fiqa"
     'fever'
 )
 target_dims=(
@@ -46,15 +43,14 @@ target_dims=(
 )
 
 transform_list=(
-    # "none" # "none"需要单独放
-    "pca"
-    "whitening"
+    # "none" # "none" must be run separately first, as the baseline for subsequent paired t-tests
     "prefix_truncation"
     "random_truncation"
     "random_projection"
-    # "ppa_pca_ppa"
-    "spectemp"
+    "pca"
+    "whitening"
     "y-whitening"
+    "spectemp"
 )
 
 seed_list=(
@@ -63,23 +59,25 @@ seed_list=(
     2026 # default seed 
 )
 
-# 把 none 运行，不需要 输入 target_dim 和 transform
-
-# for model in "${model_list[@]}"; do
-#     for dataset in "${dataset_list[@]}"; do
-#         sbatch /gpfs/work4/0/prjs0928/Embedding_Isotropy/scripts/eval_embedding_compression_sub.sh $model $dataset "none" 512
-#     done
-# done
-
+# Step 1: Run the "none" baseline first; no target_dim or transform argument is needed
 
 for model in "${model_list[@]}"; do
     for dataset in "${dataset_list[@]}"; do
-        for target_dim in "${target_dims[@]}"; do
-            for transform in "${transform_list[@]}"; do
-                for seed in "${seed_list[@]}"; do
-                    sbatch /gpfs/work4/0/prjs0928/Embedding_Isotropy/scripts/eval_embedding_compression_sub.sh "$model" "$dataset" "$transform" "$target_dim" "$seed"
-                done
-            done
-        done
+        sbatch /SpecTemp/scripts/eval_embedding_compression_sub.sh $model $dataset "none" 512
     done
 done
+
+
+# Step 2: Run all other transforms; target_dim, transform, and seed arguments are required
+
+# for model in "${model_list[@]}"; do
+#     for dataset in "${dataset_list[@]}"; do
+#         for target_dim in "${target_dims[@]}"; do
+#             for transform in "${transform_list[@]}"; do
+#                 for seed in "${seed_list[@]}"; do
+#                     sbatch /SpecTemp/scripts/eval_embedding_compression_sub.sh "$model" "$dataset" "$transform" "$target_dim" "$seed"
+#                 done
+#             done
+#         done
+#     done
+# done

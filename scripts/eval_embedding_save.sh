@@ -1,29 +1,29 @@
-# 这个脚本的作用在于 评估从checkpoint中加载的模型的embedding性能，并将embedding保存到指定路径，避免每次评估都要重新计算embedding，节省时间
+# This script evaluates embedding performance of models and saves embeddings to a specified path,
+# avoiding recomputation on each run and saving time.
 
 
-# embedding save 路径是 DEFAULT_EMBEDDING_ROOT ， 需要替换成您自己的
+# The embedding save path is DEFAULT_EMBEDDING_ROOT, './embeddings/clean' - replace with your own path
 
 model_list=(
- 
+
     "bge_m3"
     "qwen3"
     "gte"
     "embeddinggemma"
-    "jina_v4" # jina_v4  的arugana 数据集需要设置 task 为 text-matching 才能取得 论文报告的结果，其他数据集下默认为 retrieval 任务
+    "jina_v4" # For jina_v4, the arguana dataset requires task='text-matching' to reproduce paper results; other datasets default to retrieval task
     "nomic_v2"
-)     
+)
 
- 
 dataset_list=(
     "msmarco"
     "nq"
     "fiqa"
     "fever"
-)    
+)
 
-for model in "${model_list[@]}"
- for dataset in "${dataset_list[@]}"
-  python eval_emebedding_save.py --model_name_or_path $model --dataset $dataset
-done
-    echo "Evaluating model: $model on dataset: $dataset"
+for model in "${model_list[@]}"; do
+    for dataset in "${dataset_list[@]}"; do
+        echo "Evaluating model: $model on dataset: $dataset"
+        python eval_emebedding_save.py --model_name $model --dataset $dataset
+    done
 done

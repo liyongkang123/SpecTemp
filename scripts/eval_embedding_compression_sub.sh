@@ -12,13 +12,12 @@
 # Set-up the environment.
 
 # Activate conda
-# eval "$(/gpfs/home1/yli4/anaconda3/bin/conda shell.bash hook)"
 eval "$($HOME/anaconda3/bin/conda shell.bash hook)"
 conda activate ir
 
 nvidia-smi
 
-cd /gpfs/work4/0/prjs0928/Embedding_Isotropy
+cd /SpecTemp
 
 model=$1
 dataset=$2

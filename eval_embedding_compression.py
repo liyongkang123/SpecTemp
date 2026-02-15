@@ -1,7 +1,6 @@
 '''
-在常规的生成embedding之后，我会修改embedding 然后再 用于 检索
+Apply post-hoc transforms to pre-computed embeddings and evaluate retrieval performance.
 '''
-import time
 import torch
 import json
 import random
@@ -10,13 +9,11 @@ from transformers import (
     set_seed,
     AutoTokenizer,
 )
-import gc
 from sentence_transformers import SentenceTransformer
 from transformers import AutoModel
 from transformers.trainer_utils import set_seed
 import wandb
 import argparse
-from utils.load_model import load_model_hf
 from utils.load_data import load_beir_data
 from utils.logging import LoggingHandler
 
@@ -34,18 +31,14 @@ import sys
 import transformers
 from torch import nn
 from transformers import set_seed
-from utils.utils import get_model_prompts_tasks
-from isotropy_evals.isoscore_torch import IsoScore
-from isotropy_evals.existing_scores_torch import isotropy_partition_score_torch_svd,isotropy_cosine
 import glob
-from beir.retrieval.search.base import BaseSearch
 from beir.retrieval.search.dense.faiss_index import FaissFlatSearcher
 from beir.retrieval.search.dense.util import cos_sim, dot_score, pickle_load, save_embeddings
 from itertools import chain
 from utils.utils import calculate_retrieval_metrics,remove_identical_ids
 
 
-from embedding_transforms.baselines_numpy import matryoshka_truncation,random_truncation,pca_truncation,whitening_k_truncation,pca_all_but_the_top_truncation,random_projection_truncation
+from embedding_transforms.baselines_numpy import matryoshka_truncation,random_truncation,pca_truncation,whitening_k_truncation,random_projection_truncation
 from embedding_transforms.spectemp import unified_spectral_tempering_truncation
 
 import torch
@@ -74,39 +67,22 @@ def _extract_shard_index(filepath):
     except Exception:
         return 0
 
-def isotropy_scores(embeddings):
-
-    # 随机选择最多100k个embedding
-    if embeddings.shape[0] > 100000:
-        embeddings = embeddings[np.random.choice(embeddings.shape[0], 100000, replace=False)]
-
-    start_time = time.time()
-    isotropy_partition_score = isotropy_partition_score_torch_svd(embeddings)
-    print('isotropy_partition_score time: ', time.time() - start_time)
-    start_time = time.time()
-    isotropy_cosine_score = isotropy_cosine(embeddings)
-    print('isotropy_cosine_score time: ', time.time() - start_time)
-    start_time = time.time()
-    isocore = IsoScore(embeddings)
-    print('isocore time: ', time.time() - start_time)
-    return isotropy_partition_score, isotropy_cosine_score, isocore
-
 def load_local_embeddings(corpus_embeddings_file_path=None, query_embeddings_file_path=None):
-    # 初始化返回变量为 None
+    # Initialise return variables to None
     corpus_embeddings = None
     all_corpus_ids = None
     query_embeddings = None
     query_ids = None
-    
+
     if corpus_embeddings_file_path is not None:
-        # 加载 corpus embeddings    
+        # Load corpus embeddings
         corpus_embeddings_files = glob.glob(f"{corpus_embeddings_file_path}/corpus.*.pkl")
         
         if not corpus_embeddings_files:
             logger.warning(f"No corpus embedding files found in {corpus_embeddings_file_path}")
         else:
             logger.info("Loading precomputed corpus embeddings...")
-            # 稳定、可解释的顺序（按分片编号排序）
+            # Stable, deterministic ordering (sorted by shard index)
             corpus_embeddings_files.sort(key=_extract_shard_index)
 
             iterator = (pickle_load(p) for p in corpus_embeddings_files)
@@ -121,7 +97,7 @@ def load_local_embeddings(corpus_embeddings_file_path=None, query_embeddings_fil
             corpus_embeddings = np.concatenate(corpus_embeddings_all_list, axis=0) if corpus_embeddings_all_list else np.empty((0,))
 
     if query_embeddings_file_path is not None:
-        # 加载 query embeddings
+        # Load query embeddings
         query_embeddings_file = f"{query_embeddings_file_path}/queries.pkl"
         if not os.path.exists(query_embeddings_file):
             logger.warning(f"Query embeddings file not found: {query_embeddings_file}")
@@ -147,12 +123,12 @@ def Faiss_Search(corpus_embeddings, query_embeddings, corpus_ids, query_ids, bat
     """
     import gc
     
-    # 每次调用创建全新的 FAISS 索引 (局部变量，函数结束后自动释放)
+    # Create a fresh FAISS index on every call (local variable, auto-released on return)
     faiss_flat = FaissFlatSearcher(corpus_embeddings)
-    faiss_flat.add(corpus_embeddings)  # 构造函数只初始化结构，需要显式添加数据
-    
-    gpu_res_list = []  # 用于追踪所有 GPU 资源（支持多卡）
-    gpu_index = None   # 保存 GPU index 的引用
+    faiss_flat.add(corpus_embeddings)  # Constructor only initialises structure; data must be added explicitly
+
+    gpu_res_list = []  # Track all GPU resources (supports multi-GPU)
+    gpu_index = None   # Hold a reference to the GPU index
     use_gpu = False
     
     num_gpus = faiss.get_num_gpus()
@@ -165,17 +141,17 @@ def Faiss_Search(corpus_embeddings, query_embeddings, corpus_ids, query_ids, bat
                 co = faiss.GpuClonerOptions()
                 co.useFloat16 = True
                 gpu_res = faiss.StandardGpuResources()
-                # 禁用预分配的临时内存池，改为按需分配（更容易释放）
+                # Disable pre-allocated temp memory pool; use on-demand allocation (easier to release)
                 gpu_res.noTempMemory()
                 gpu_res_list.append(gpu_res)
                 gpu_index = faiss.index_cpu_to_gpu(gpu_res, 0, faiss_flat.index, co)
                 faiss_flat.index = gpu_index
                 use_gpu = True
             else:
-                # 多卡时使用 index_cpu_to_all_gpus（更简单且兼容性更好）
+                # Use index_cpu_to_all_gpus for multi-GPU (simpler and better compatibility)
                 co = faiss.GpuMultipleClonerOptions()
                 co.useFloat16 = True
-                co.shard = True  # 分片到多个 GPU
+                co.shard = True  # Shard the index across multiple GPUs
                 
                 gpu_index = faiss.index_cpu_to_all_gpus(faiss_flat.index, co=co)
                 faiss_flat.index = gpu_index
@@ -183,7 +159,7 @@ def Faiss_Search(corpus_embeddings, query_embeddings, corpus_ids, query_ids, bat
         except Exception as e:
             logger.error(f"Error converting index to GPU: {e}. Falling back to CPU.")
             use_gpu = False
-            # 清理已创建的资源
+            # Clean up any resources already created
             for res in gpu_res_list:
                 del res
             gpu_res_list.clear()
@@ -199,30 +175,30 @@ def Faiss_Search(corpus_embeddings, query_embeddings, corpus_ids, query_ids, bat
             results[qid] = {doc_id: s for doc_id, s in zip(doc_ids, score)}
         return results
     finally:
-        # ===== 显式释放 GPU 显存（顺序很重要）=====
-        
-        # Step 1: 同步所有 GPU，确保操作完成
+        # ===== Explicitly release GPU memory (order matters) =====
+
+        # Step 1: Synchronise all GPUs to ensure all operations are complete
         if use_gpu and torch.cuda.is_available():
             torch.cuda.synchronize()
-        
-        # Step 2: 先删除 GPU index（必须在 resources 之前）
+
+        # Step 2: Delete GPU index first (must happen before releasing resources)
         if gpu_index is not None:
             del gpu_index
-        
-        # Step 3: 清理 faiss_flat 中的引用
+
+        # Step 3: Clear the reference held inside faiss_flat
         if hasattr(faiss_flat, 'index') and faiss_flat.index is not None:
             faiss_flat.index = None
         del faiss_flat
-        
-        # Step 4: 强制 GC 让 C++ 析构函数执行
+
+        # Step 4: Force GC to trigger C++ destructors
         gc.collect()
-        
-        # Step 5: 删除 GPU resources（在 index 删除后）
+
+        # Step 5: Release GPU resources (after index has been deleted)
         for res in gpu_res_list:
             del res
         gpu_res_list.clear()
-        
-        # Step 6: 再次 GC + 清空 CUDA 缓存
+
+        # Step 6: GC again and clear the CUDA cache
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -230,8 +206,7 @@ def Faiss_Search(corpus_embeddings, query_embeddings, corpus_ids, query_ids, bat
 
 
 def embedding_transform(original_corpus_embeddings, original_query_embeddings, transform_type='pca',target_dim=768, kneedle_S=0.5, gamma=0.5, seed=2026):
-    # 输入的其实是 numpy array, 但是我们使用torch 函数的话非常快速高效，所以更好用torch 函数·
-
+    # Inputs and outputs are numpy arrays
     
     
     if transform_type == 'prefix_truncation':
@@ -261,9 +236,6 @@ def embedding_transform(original_corpus_embeddings, original_query_embeddings, t
     elif transform_type == 'grid_y-whitening':
         query_embeddings, corpus_embeddings = unified_spectral_tempering_truncation(original_query_embeddings, original_corpus_embeddings, target_dim=target_dim, gamma=gamma, auto_gamma=False, kneedle_S=kneedle_S, seed=seed) # gamma is the user-defined gamma here
 
-    elif transform_type == 'ppa_pca_ppa':
-        query_embeddings, corpus_embeddings = pca_all_but_the_top_truncation(original_query_embeddings, original_corpus_embeddings, target_dim=target_dim, seed=seed)
-
     elif transform_type == 'none':
         corpus_embeddings = original_corpus_embeddings
         query_embeddings = original_query_embeddings
@@ -276,13 +248,12 @@ def config_parse():
     # Parse command line arguments for evaluation
     parser = argparse.ArgumentParser(description="Evaluate BEIR retrieval results with different LLM-based IR models.")
     parser.add_argument("--dataset", type=str, default="nq", help="Dataset to evaluate on (e.g., 'nq', 'msmarco' arguana nfcorpus scifact scidocs fiqa trec-covid)" )
-    parser.add_argument("--model_name", type=str, default="gte", help="Path to the evaluation model. gte qwen3 diver jina_v4 有问题其他的可以正常运行")
+    parser.add_argument("--model_name", type=str, default="gte", help="Path to the evaluation model. gte qwen3 diver jina_v4 ")
     parser.add_argument("--split", type=str, default="test", help="Dataset split to use for evaluation (default: 'test').")
-    parser.add_argument("--per_gpu_eval_batch_size", type=int, default=128, help="Batch size for evaluation (default: 256).")
+    parser.add_argument("--per_gpu_eval_batch_size", type=int, default=32, help="Batch size for evaluation (default: 256).")
     parser.add_argument('--seed', type=int, default=2026, help='Seed for evaluation.')
     parser.add_argument("--transform_type", type=str, default="spectemp", help="Transform type for the transform. none or pca,whitening, prefix_truncation, random_truncation, random_projection, ppa_pca_ppa spectemp y-whitening")
     parser.add_argument("--target_dim", type=int, default=768, help="Target dimension for the transform.")
-    # parser.add_argument("--temperature", type=float, default=0.58, help="Temperature for the my own retrieval method.")
     parser.add_argument("--kneedle_S", type=float, default=0.5, help="Kneedle algorithm sensitivity parameter.")
     parser.add_argument("--gamma", type=float, default=0.5, help="Grid Y-Whitening gamma parameter.")
 
@@ -292,15 +263,13 @@ def config_parse():
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # 获取项目根路径（假设 eval.py 或 main 执行在项目根目录）
+    # Assumes the script is executed from the project root directory
 
 
-    DEFAULT_EMBEDDING_ROOT = '/scratch-shared/yli4/LLM_Robust/Clean'
+    DEFAULT_EMBEDDING_ROOT = './embeddings/clean'
     DEFAULT_SCORES_ROOT = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'output')
 
     embedding_save_root = DEFAULT_EMBEDDING_ROOT
-    # project_root = '/scratch-shared/yli4/LLM_Robust' # 临时修改
-    # embedding_save_root = '/scratch-shared/yli4/LLM_Robust' # 临时修改
     scores_save_root = DEFAULT_SCORES_ROOT
 
     config  =  config_parse()
@@ -317,27 +286,27 @@ def main():
 
     wandb_run = wandb.init(
         # set the wandb project where this run will be logged
-        project="LLM_robust_eval_improve_embedding_new", # 改成了 new, 作为最终版
+        project="Retrieval_eval_SpecTemp", 
         # track hyperparameters and run metadata
         config=vars(config),
     )
 
-    # 结合项目根路径构建绝对路径
+    # Build the embedding path; 'output/' prefix is kept for compatibility with the embedding save script
     embedding_save_path = os.path.join(
         embedding_save_root,
-        f'output/embeddings/{config.model_name}/{config.dataset}' # 这里需要保留 output/ 因为之前的代码需要这个路径
+        f'output/embeddings/{config.model_name}/{config.dataset}'
     )
     os.makedirs(embedding_save_path, exist_ok=True)
 
     print(f"config: {config}")
     #### load eval_dataset
-    # split = 'test' or 'dev',默认是test
+    # split: 'test' or 'dev', defaults to 'test'
     data_output_dic = load_beir_data(config.dataset ,split=config.split)
     corpus, queries, qrels = data_output_dic['corpus'], data_output_dic['queries'], data_output_dic['qrels']
     queries_raw = data_output_dic['queries_raw'] if 'queries_raw' in data_output_dic else None
 
 
-    # 然后手动读取embedding并进行检索
+    # Load saved embeddings and run retrieval
     top_k = 1000
     batch_size = config.per_gpu_eval_batch_size
 
@@ -345,80 +314,49 @@ def main():
     
     print("original_corpus_embeddings.shape: ",original_corpus_embeddings.shape, "original_query_embeddings.shape: ",original_query_embeddings.shape)
 
-    isotropy_partition_score_before, isotropy_cosine_score_before, isocore_before = isotropy_scores(original_corpus_embeddings)
-
-    print('before corpus: isotropy_partition_score: ',isotropy_partition_score_before, 'isotropy_cosine_score: ',isotropy_cosine_score_before, 'isocore: ',isocore_before)
-    
-    # 强制释放 isotropy_scores 占用的 GPU 显存
-    gc.collect()
-    torch.cuda.empty_cache()
-    torch.cuda.synchronize()  # 等待所有 CUDA 操作完成
-    print(f"[DEBUG] GPU memory after isotropy_scores: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
-
     changed_corpus_embeddings, changed_query_embeddings = embedding_transform(original_corpus_embeddings, original_query_embeddings, transform_type=config.transform_type, target_dim=config.target_dim, kneedle_S=config.kneedle_S, gamma=config.gamma, seed=config.seed)
 
 
     print('changed_corpus_embeddings.shape: ',changed_corpus_embeddings.shape, 'changed_query_embeddings.shape: ',changed_query_embeddings.shape)
-    isotropy_partition_score_after, isotropy_cosine_score_after, isocore_after = isotropy_scores(changed_corpus_embeddings)
-    print('after corpus: isotropy_partition_score: ',isotropy_partition_score_after, 'isotropy_cosine_score: ',isotropy_cosine_score_after, 'isocore: ',isocore_after)
-
     changed_results = Faiss_Search(changed_corpus_embeddings, changed_query_embeddings, all_corpus_ids, query_ids,)
 
     # results = retriever.encode_and_retrieve(corpus, queries, encode_output_path = embedding_save_path, overwrite=False,)
     # results = retriever.retrieve(corpus, queries)
 
-    # 准备 isotropy scores 字典传递给 _evaluate
-    isotropy_scores_dict = {
-        'partition_before': isotropy_partition_score_before,
-        'cosine_before': isotropy_cosine_score_before,
-        'isocore_before': isocore_before,
-        'partition_after': isotropy_partition_score_after,
-        'cosine_after': isotropy_cosine_score_after,
-        'isocore_after': isocore_after,
-    }
-    
-    output_list = _evaluate(changed_results, qrels, config, scores_save_root, queries_raw, isotropy_scores_dict)
+    output_list = _evaluate(changed_results, qrels, config, scores_save_root, queries_raw)
 
-    # 准备 wandb 汇总日志（所有 split 的结果在一条记录中）
-    wandb_log_dict = {
-        # Isotropy scores（只需记录一次）
-        'isotropy_partition_before': isotropy_scores_dict['partition_before'],
-        'isotropy_cosine_before': isotropy_scores_dict['cosine_before'],
-        'isocore_before': isotropy_scores_dict['isocore_before'],
-        'isotropy_partition_after': isotropy_scores_dict['partition_after'],
-        'isotropy_cosine_after': isotropy_scores_dict['cosine_after'],
-        'isocore_after': isotropy_scores_dict['isocore_after'],
-    }
-    
+    # Prepare wandb summary log (all splits recorded in a single entry)
+    wandb_log_dict = {}
+
     for output_dic in output_list:
         split = output_dic['split']
         output_all_scores = output_dic['output_all_scores']
         t_test_result = output_dic.get('t_test_result', None)
-        
-        # 使用 split 作为前缀记录每个 split 的指标
+
+        # Log metrics for each split using the split name as prefix
         wandb_log_dict[f'{split}/NDCG@10'] = output_all_scores.get('NDCG@10', None)
         wandb_log_dict[f'{split}/MRR@10'] = output_all_scores.get('MRR@10', None)
-        
-        # 添加 t-test 结果（如果存在）
+
+        # Add t-test results if available
         if t_test_result is not None:
             wandb_log_dict[f'{split}/t_statistic'] = t_test_result['t_stat']
             wandb_log_dict[f'{split}/p_value'] = t_test_result['p_value']
             wandb_log_dict[f'{split}/is_significant'] = t_test_result['is_significant']
             wandb_log_dict[f'{split}/is_better'] = t_test_result['is_better']
-        
+
         print(f"Prepared wandb log for split: {split}")
-    
-    # 一次性记录所有结果
+
+    # Log everything in a single wandb call
     wandb.log(wandb_log_dict)
     print(f"Logged all splits to wandb: {list(set([k.split('/')[0] for k in wandb_log_dict.keys() if '/' in k]))}")
 
 
-def _evaluate(results, qrels, config, scores_save_root, queries_raw=None, isotropy_scores_dict=None):
+def _evaluate(results, qrels, config, scores_save_root, queries_raw=None):
 
-    # 如果是bright数据集，则有 excluded_ids 需要从 results 中删除
+    # For BRIGHT datasets, remove excluded_ids from results
     if config.dataset in ["biology","earth_science","economics","psychology","robotics", "stackoverflow","sustainable_living","leetcode","pony","aops","theoremqa_theorems","theoremqa_questions"  ]:
         results = bright_scores_remove_excluded_ids(queries_raw,results)
-        # 其实非 StackExchange 的5个数据集需要这样做
+        # Required for the non-StackExchange BRIGHT subsets
 
     if config.dataset == 'arguana':
         results = remove_identical_ids(results)
@@ -431,22 +369,22 @@ def _evaluate(results, qrels, config, scores_save_root, queries_raw=None, isotro
         splits = ['golds','evidence']
     else:
         splits = [config.split]
-        qrels = {config.split: qrels} # 这是必须的
+        qrels = {config.split: qrels}  # required: wrap qrels in a dict keyed by split
 
     output_list=[]
     for split in splits:
         output_dic={}
         output_dic['split']=split
 
-        # 构造 transform_suffix，尽量把关键超参数都编码进去，避免同名覆盖
-        # 对于 baseline（none），不区分 seed，统一写在 none 目录下
+        # Build transform_suffix encoding key hyperparams to avoid directory name collisions
+        # The "none" baseline is seed-agnostic; always written to the shared 'none' directory
         if config.transform_type == 'none':
             transform_suffix = 'none'
         elif config.transform_type in ['spectemp', 'y-whitening', 'grid_y-whitening']:
-            # 这三种都会用到 kneedle_S
+            # These three transforms all use kneedle_S
             base_suffix = f'{config.transform_type}_{config.target_dim}'
             if config.transform_type == 'grid_y-whitening':
-                # grid_y-whitening 还依赖 gamma
+                # grid_y-whitening also depends on gamma
                 base_suffix += f'_gamma{config.gamma}'
             base_suffix += f'_S{config.kneedle_S}'
             transform_suffix = f'{base_suffix}_seed{config.seed}'
@@ -461,13 +399,9 @@ def _evaluate(results, qrels, config, scores_save_root, queries_raw=None, isotro
 
         print(f"--------------------------------split: {split}--------------------------------")
         print(f"dataset: {config.dataset}, model_name: {config.model_name}, transform_type: {config.transform_type}, target_dim: {config.target_dim}")
-        # if config.dataset=='arguana':
-        #     ignore_identical_ids = True
-        # else:
-        #     ignore_identical_ids = False
 
 
-        # 使用自己写的calculate_retrieval_metrics 函数来计算指标
+        # Compute retrieval metrics
         output_all_scores, merged_query_level_scores = calculate_retrieval_metrics(
             results=results, qrels=qrels[split], return_scores=True
         )
@@ -475,22 +409,16 @@ def _evaluate(results, qrels, config, scores_save_root, queries_raw=None, isotro
         output_dic['merged_query_level_scores']=merged_query_level_scores
         output_list.append(output_dic)
 
-        # ndcg, _map, recall, precision ,all_scores = retriever.evaluate(qrels[split], results, retriever.k_values,ignore_identical_ids=ignore_identical_ids,return_scores=True) # 这里有 ignore_identical_ids
-        # # print(ndcg, _map, recall, precision)
-        # mrr ,mrr_scores = retriever.evaluate_custom(qrels[split], results, retriever.k_values, metric="mrr" ,return_scores=True) # 这里没有ignore_identical_ids
-        # print('mrr: ' ,mrr)
-        # merged_scores = merge_beir_eval_scores(all_scores,mrr_scores)
  
 
-        # 如果 config.transform_type != 'none', 则和 none 的结果进行pairwise t-test, 根据 dataset 的不同选择不同的 metric
-        # msmarco 使用 MRR@10, 其他使用 ndcg_cut_10
-        # 进行pairwise t-test
+        # If transform is not "none", run a paired t-test against the "none" baseline
+        # Use MRR@10 for msmarco, ndcg_cut_10 for all others
         if config.dataset == 'msmarco':
             metric = 'MRR@10'
         else:
             metric = 'ndcg_cut_10'
         if config.transform_type != 'none':
-            # 读取 baseline（none）的结果：统一从 none 目录读取，不区分 seed
+            # Load the "none" baseline scores from the shared 'none' directory (seed-agnostic)
             none_scores_path = os.path.join(
                 scores_save_root,
                 f'scores/{config.model_name}/{config.dataset}_{split}/none/merged_scores.json'
@@ -526,7 +454,7 @@ def _evaluate(results, qrels, config, scores_save_root, queries_raw=None, isotro
             else:
                 print(f"The results are not statistically significant (p={p_value:.4f}).")
             
-            # 保存 t-test 结果到 output_dic（转为 Python 原生类型，避免 numpy 类型无法 JSON 序列化）
+            # Save t-test result (cast to Python native types to ensure JSON serialisability)
             output_dic['t_test_result'] = {
                 't_stat': float(t_stat),
                 'p_value': float(p_value),
@@ -535,16 +463,16 @@ def _evaluate(results, qrels, config, scores_save_root, queries_raw=None, isotro
             } 
         
         
-        # 保存 query-level scores 结果
+        # Save query-level scores
         with open(f'{scores_save_path}/merged_scores.json', 'w') as f:
             json.dump(merged_query_level_scores, f)
-        # 如果存在 t_test_result，合并到 output_all_scores 中一起保存
+        # Merge t_test_result into output_all_scores if present
         if 't_test_result' in output_dic:
             output_all_scores.update(output_dic['t_test_result'])
-        # 保存整体指标汇总（output_all_scores）
+        # Save aggregate metric summary
         with open(f'{scores_save_path}/output_all_scores.json', 'w') as f:
             json.dump(output_all_scores, f)
-        # 保存 retrieval results
+        # Save retrieval results
         with open(f'{scores_save_path}/retrieval_results.json', 'w') as f:
             json.dump(results, f)
 
@@ -553,6 +481,5 @@ def _evaluate(results, qrels, config, scores_save_root, queries_raw=None, isotro
 
     return output_list
 
-# 保存检索的结果
 if __name__ == '__main__':
     main()

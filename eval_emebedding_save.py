@@ -26,8 +26,6 @@ import logging
 import os
 import json
 import torch
-import sys
-import transformers
 from torch import nn
  
 from utils.utils import get_model_prompts_tasks
@@ -75,12 +73,12 @@ class Config:
     DEFAULT_K_VALUES = [1, 5, 10, 50, 100, 1000]
     DEFAULT_EMBEDDING_ROOT = './embeddings/clean'
     DEFAULT_SCORES_ROOT = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'output')
-    WANDB_PROJECT = "LLM_robust_eval"
+    WANDB_PROJECT = "Retrieval_eval"
 
 def config_parse():
     # Parse command line arguments for evaluation
     parser = argparse.ArgumentParser(description="Evaluate BEIR retrieval results with different LLM-based IR models.")
-    parser.add_argument("--dataset", type=str, default="pony", help="Dataset to evaluate on (e.g., 'nq', 'msmarco' arguana nfcorpus scifact scidocs fiqa trec-covid)" )
+    parser.add_argument("--dataset", type=str, default="fiqa", help="Dataset to evaluate on (e.g., 'nq', 'msmarco' arguana nfcorpus scifact scidocs fiqa trec-covid)" )
     parser.add_argument("--model_name", type=str, default="gte", help="Path to the evaluation model.   gte qwen3  bge_m3  jina_v4 embeddinggemma  nomic_v2 other models can be run normally")
     parser.add_argument("--split", type=str, default="test", help="Dataset split to use for evaluation (default: 'test').")
     parser.add_argument("--per_gpu_eval_batch_size", type=int, default=32, help="Batch size for evaluation (default: 256).")

@@ -90,3 +90,9 @@ Supported `--transform_type` values:
 | `spectemp` | Spectral Tempering (ours) |
 
 > **Note:** The `none` baseline must be run before any other transform, as it is used as the reference for paired t-tests.
+
+---
+
+## License
+
+This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.

@@ -14,20 +14,18 @@ Experiments use datasets from the [Extended BEIR Datasets](https://github.com/li
 
 ## Environment Setup
 
-You can set up the environment using either pip or conda.
+Use Python 3.10–3.12 and run one of the following setups from the repository root. Both use the dependencies in `requirements.txt`.
 
 ```bash
 # Using pip (recommended)
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 
 # Using conda
 conda env create -f environment.yml
-conda activate <env_name>
+conda activate ir
 ```
 
-Beyond standard deep learning libraries (PyTorch, Transformers), this project requires:
-
-- [BEIR](https://github.com/beir-cellar/beir) — Benchmarking IR library
+Generating embeddings in Step 1 requires an NVIDIA GPU and CUDA-enabled PyTorch. On Linux x86_64, installation selects `faiss-gpu`, which uses CUDA 12.6+ libraries and requires glibc 2.27 or later. Other platforms select `faiss-cpu`. When no CUDA device is visible, FAISS search runs on the CPU.
 
 ---
 
